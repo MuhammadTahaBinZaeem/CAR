@@ -15,6 +15,7 @@
 #include <IRremote.h>
 
 // --------------------------- Pin definitions ---------------------------
+// Change these to match your motor driver pins if you rewired the L298N.
 const uint8_t ENA_PIN = 5;
 const uint8_t ENB_PIN = 6;
 const uint8_t IN1_PIN = 12;
@@ -22,9 +23,11 @@ const uint8_t IN2_PIN = 13;
 const uint8_t IN3_PIN = 10;
 const uint8_t IN4_PIN = 11;
 
+// Adjust the digital inputs below if your line sensors are connected elsewhere.
 const uint8_t LEFT_IR_PIN  = 4;
 const uint8_t RIGHT_IR_PIN = 2;
 
+// Ultrasonic trigger/echo pins; update if you use a different pair.
 const uint8_t TRIG_PIN = 9;
 const uint8_t ECHO_PIN = 8;
 const uint8_t SERVO_PIN = A5;
@@ -44,15 +47,16 @@ enum Mode {
 Mode currentMode = MODE_LINE;
 
 // --------------------------- Control constants ---------------------------
+// Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
 const uint16_t SERIAL_DEBUG_BAUD = 115200; // Match ESP8266 baud; monitor at this speed
-const uint8_t DEFAULT_SPEED = 180;         // PWM 0-255
-const uint8_t TURN_SPEED = 160;
-const uint16_t OBSTACLE_THRESHOLD_CM = 15;
+const uint8_t DEFAULT_SPEED = 180;         // PWM 0-255; raise/lower to match your motors
+const uint8_t TURN_SPEED = 160;            // Slower helps turning accuracy
+const uint16_t OBSTACLE_THRESHOLD_CM = 15; // Increase if your ultrasonic sensor is noisy
 const uint16_t SCAN_DELAY_MS = 200;        // Time for servo to settle when scanning
 
 // --------------------------- IR remote codes ---------------------------
 // Replace these with the codes from your MP3 remote using the IRrecvDump example.
-const unsigned long IR_CODE_FWD = 0x00FFA25D;
+const unsigned long IR_CODE_FWD = 0x00FFA25D;      // Replace with your remote's codes
 const unsigned long IR_CODE_BACK = 0x00FF629D;
 const unsigned long IR_CODE_LEFT = 0x00FF22DD;
 const unsigned long IR_CODE_RIGHT = 0x00FFC23D;
@@ -169,6 +173,7 @@ void compareDistanceAndTurn() {
 }
 
 // --------------------------- Mode handlers ---------------------------
+// Basic line follower: uses only the two IR reflectance sensors.
 void handleLineFollower() {
   bool leftOnLine = readLeftSensor();
   bool rightOnLine = readRightSensor();
@@ -184,6 +189,7 @@ void handleLineFollower() {
   }
 }
 
+// Obstacle avoider: checks distance at a fixed interval and turns away.
 void handleObstacleAvoider() {
   unsigned long now = millis();
   if (now - lastDistanceCheck >= DISTANCE_CHECK_INTERVAL) {
@@ -322,6 +328,7 @@ void processIRRemote() {
 }
 
 // --------------------------- Setup and loop ---------------------------
+// Initialize peripherals; adjust baud and servo center angle for your build.
 void setup() {
   Serial.begin(SERIAL_DEBUG_BAUD);
   Serial.println(F("Robot car starting"));
@@ -344,7 +351,7 @@ void setup() {
   digitalWrite(TRIG_PIN, LOW);
 
   scanServo.attach(SERVO_PIN);
-  moveServoAndWait(90); // Center
+  moveServoAndWait(90); // Center; change if your servo horn is offset
 
   stopMotors();
 }
