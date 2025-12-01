@@ -66,8 +66,8 @@ const unsigned long IR_CODE_MODE_BT = 0x00FF5AA5;       // Button 6
 
 // --------------------------- Globals ---------------------------
 Servo scanServo;
-IRrecv irrecv(IR_RECEIVER_PIN);
-decode_results irResults;
+// IRremote 4.x uses the singleton IrReceiver instance instead of IRrecv objects.
+// Keeping it global simplifies command processing and avoids compatibility issues.
 
 uint8_t currentSpeed = DEFAULT_SPEED;
 unsigned long lastDistanceCheck = 0;
@@ -288,8 +288,8 @@ void processSerialCommand(Stream &port) {
 }
 
 void processIRRemote() {
-  if (irrecv.decode(&irResults)) {
-    unsigned long code = irResults.value;
+  if (IrReceiver.decode()) {
+    unsigned long code = IrReceiver.decodedIRData.decodedRawData;
     Serial.print(F("IR code: 0x"));
     Serial.println(code, HEX);
 
@@ -317,7 +317,7 @@ void processIRRemote() {
       processModeCommand('6');
     }
 
-    irrecv.resume();
+    IrReceiver.resume();
   }
 }
 
@@ -339,7 +339,9 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  irrecv.enableIRIn();
+  IrReceiver.begin(IR_RECEIVER_PIN, ENABLE_LED_FEEDBACK);
+
+  digitalWrite(TRIG_PIN, LOW);
 
   scanServo.attach(SERVO_PIN);
   moveServoAndWait(90); // Center
