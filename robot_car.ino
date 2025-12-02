@@ -3,11 +3,11 @@
 // IR remote driving, Wi‑Fi serial control, and Bluetooth serial control.
 //
 // Hardware mapping:
-// L298N: ENA -> D5 (PWM), ENB -> D6 (PWM), IN1->D12, IN2->D13, IN3->D10, IN4->D11
+// L298N: ENA -> D5 (PWM), ENB -> D6 (PWM), IN1->D12, IN2->D11, IN3->D10, IN4->D9
 // Line sensors: left -> D4, right -> D2
-// Ultrasonic (HC-SR04): TRIG -> D9, ECHO -> D8
-// Servo (SG90) for ultrasonic sweep: signal -> A5
-// IR receiver: signal -> D7
+// Ultrasonic (HC-SR04): TRIG -> D8, ECHO -> D7
+// Servo (SG90) for ultrasonic sweep: signal -> D3
+// IR receiver: signal -> D13
 // Bluetooth HC-05 (optional): hardware Serial at 9600 or SoftwareSerial if desired
 // ESP8266 Wi‑Fi: hardware Serial shared at configured baud (e.g., 115200)
 
@@ -19,20 +19,20 @@
 const uint8_t ENA_PIN = 5;
 const uint8_t ENB_PIN = 6;
 const uint8_t IN1_PIN = 12;
-const uint8_t IN2_PIN = 13;
+const uint8_t IN2_PIN = 11;
 const uint8_t IN3_PIN = 10;
-const uint8_t IN4_PIN = 11;
+const uint8_t IN4_PIN = 9;
 
 // Adjust the digital inputs below if your line sensors are connected elsewhere.
 const uint8_t LEFT_IR_PIN  = 4;
 const uint8_t RIGHT_IR_PIN = 2;
 
 // Ultrasonic trigger/echo pins; update if you use a different pair.
-const uint8_t TRIG_PIN = 9;
-const uint8_t ECHO_PIN = 8;
-const uint8_t SERVO_PIN = A5;
+const uint8_t TRIG_PIN = 8;
+const uint8_t ECHO_PIN = 7;
+const uint8_t SERVO_PIN = 3;
 
-const uint8_t IR_RECEIVER_PIN = 7;
+const uint8_t IR_RECEIVER_PIN = 13;
 
 // --------------------------- Mode handling ---------------------------
 enum Mode {
