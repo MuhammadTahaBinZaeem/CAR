@@ -44,7 +44,7 @@ enum Mode {
   MODE_BLUETOOTH
 };
 
-Mode currentMode = MODE_LINE;
+Mode currentMode = MODE_OBSTACLE;
 
 // --------------------------- Control constants ---------------------------
 // Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
@@ -192,19 +192,58 @@ void handleLineFollower() {
 // Obstacle avoider: checks distance at a fixed interval and turns away.
 void handleObstacleAvoider() {
   unsigned long now = millis();
-  if (now - lastDistanceCheck >= DISTANCE_CHECK_INTERVAL) {
-    lastDistanceCheck = now;
-    long distance = readDistanceCm();
-    Serial.print(F("Distance: "));
-    Serial.println(distance);
-
-    if (distance > 0 && distance <= OBSTACLE_THRESHOLD_CM) {
-      stopMotors();
-      compareDistanceAndTurn();
-    } else {
-      driveForward(currentSpeed);
-    }
+  if (now - lastDistanceCheck < DISTANCE_CHECK_INTERVAL) {
+    return;
   }
+
+  lastDistanceCheck = now;
+  long forwardDistance = readDistanceCm();
+  Serial.print(F("Distance: "));
+  Serial.println(forwardDistance);
+
+  // Treat zero readings as invalid noise; keep current action until a real value arrives.
+  if (forwardDistance <= 0) {
+    return;
+  }
+
+  if (forwardDistance > OBSTACLE_THRESHOLD_CM) {
+    driveForward(currentSpeed);
+    return;
+  }
+
+  // Obstacle detected: pause, back up slightly, and choose the clearest turn.
+  stopMotors();
+  delay(100);
+  driveBackward(TURN_SPEED);
+  delay(250);
+  stopMotors();
+
+  moveServoAndWait(120);
+  long rightDistance = readDistanceCm();
+  moveServoAndWait(60);
+  long leftDistance = readDistanceCm();
+  moveServoAndWait(90);
+
+  bool turnRightNext = rightDistance > leftDistance;
+  long bestDistance = turnRightNext ? rightDistance : leftDistance;
+
+  if (bestDistance <= OBSTACLE_THRESHOLD_CM) {
+    // If both sides are blocked, rotate in place to search for an opening.
+    turnRight(TURN_SPEED);
+    delay(500);
+    stopMotors();
+    return;
+  }
+
+  if (turnRightNext) {
+    Serial.println(F("Turning right to avoid obstacle"));
+    turnRight(TURN_SPEED);
+  } else {
+    Serial.println(F("Turning left to avoid obstacle"));
+    turnLeft(TURN_SPEED);
+  }
+  delay(400);
+  stopMotors();
 }
 
 void handleComboMode() {
