@@ -4,9 +4,9 @@ Arduino sketch for a multi-mode robot car built around the Arduino UNO WiFi R3 (
 
 ## Features
 - **Multiple driving modes:** line follower, obstacle avoider, combo (line + obstacle), IR-remote driving, Wi‑Fi serial, and Bluetooth serial.
-- **Motor driver support:** L298N with PWM speed control on `D5`/`D6` and direction on `D10–D13`.
-- **Sensors:** dual IR line sensors on `D4`/`D2`, ultrasonic distance sensor on `D9`/`D8`, and an SG90 servo on `A5` for sweeping the ultrasonic sensor.
-- **Remote control:** works with an IR receiver on `D7` plus serial commands shared with the ESP8266 or an HC-05 module.
+- **Motor driver support:** L298N with PWM speed control on `D5`/`D6` and direction on `D9–D12`.
+- **Sensors:** dual IR line sensors on `D4`/`D2`, ultrasonic distance sensor on `D8`/`D7`, and an SG90 servo on `D3` for sweeping the ultrasonic sensor.
+- **Remote control:** works with an IR receiver on `D13` plus serial commands shared with the ESP8266 or an HC-05 module.
 
 ## Dependencies
 - [Servo](https://www.arduino.cc/reference/en/libraries/servo/)
@@ -18,12 +18,12 @@ Install these libraries through the Arduino Library Manager before compiling.
 | Component | Pin mapping |
 | --- | --- |
 | L298N ENA / ENB | `D5` (PWM) / `D6` (PWM) |
-| L298N IN1 / IN2 | `D12` / `D13` |
-| L298N IN3 / IN4 | `D10` / `D11` |
+| L298N IN1 / IN2 | `D12` / `D11` |
+| L298N IN3 / IN4 | `D10` / `D9` |
 | IR line sensors | Left -> `D4`, Right -> `D2` |
-| Ultrasonic HC-SR04 | TRIG -> `D9`, ECHO -> `D8` |
-| Servo (SG90) | Signal -> `A5` |
-| IR receiver | Signal -> `D7` |
+| Ultrasonic HC-SR04 | TRIG -> `D8`, ECHO -> `D7` |
+| Servo (SG90) | Signal -> `D3` |
+| IR receiver | Signal -> `D13` |
 
 Adjust the pin assignments in `robot_car.ino` if your wiring differs.
 
