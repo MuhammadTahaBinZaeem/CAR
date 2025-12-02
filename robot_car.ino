@@ -44,7 +44,7 @@ enum Mode {
   MODE_BLUETOOTH
 };
 
-Mode currentMode = MODE_OBSTACLE;
+Mode currentMode = MODE_LINE;
 
 // --------------------------- Control constants ---------------------------
 // Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
@@ -116,11 +116,13 @@ void stopMotors() {
 
 // --------------------------- Sensor helpers ---------------------------
 bool readLeftSensor() {
-  return digitalRead(LEFT_IR_PIN) == HIGH;
+  // Most IR line sensors are active LOW when over a dark line; using INPUT_PULLUP
+  // keeps the reading stable and makes a LOW value the "on line" condition.
+  return digitalRead(LEFT_IR_PIN) == LOW;
 }
 
 bool readRightSensor() {
-  return digitalRead(RIGHT_IR_PIN) == HIGH;
+  return digitalRead(RIGHT_IR_PIN) == LOW;
 }
 
 long readDistanceCm() {
@@ -178,15 +180,26 @@ void handleLineFollower() {
   bool leftOnLine = readLeftSensor();
   bool rightOnLine = readRightSensor();
 
-  if (!leftOnLine && !rightOnLine) {
+  // Both sensors on the line: go straight.
+  if (leftOnLine && rightOnLine) {
     driveForward(currentSpeed);
-  } else if (leftOnLine && !rightOnLine) {
-    turnLeft(TURN_SPEED);
-  } else if (!leftOnLine && rightOnLine) {
-    turnRight(TURN_SPEED);
-  } else {
-    stopMotors();
+    return;
   }
+
+  // Only the left sensor sees the line: steer left to recenter.
+  if (leftOnLine && !rightOnLine) {
+    turnLeft(TURN_SPEED);
+    return;
+  }
+
+  // Only the right sensor sees the line: steer right to recenter.
+  if (!leftOnLine && rightOnLine) {
+    turnRight(TURN_SPEED);
+    return;
+  }
+
+  // Nothing detected: move forward slowly to search for the line again.
+  driveForward(TURN_SPEED);
 }
 
 // Obstacle avoider: checks distance at a fixed interval and turns away.
@@ -379,8 +392,8 @@ void setup() {
   pinMode(IN3_PIN, OUTPUT);
   pinMode(IN4_PIN, OUTPUT);
 
-  pinMode(LEFT_IR_PIN, INPUT);
-  pinMode(RIGHT_IR_PIN, INPUT);
+  pinMode(LEFT_IR_PIN, INPUT_PULLUP);
+  pinMode(RIGHT_IR_PIN, INPUT_PULLUP);
 
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
@@ -390,7 +403,11 @@ void setup() {
   digitalWrite(TRIG_PIN, LOW);
 
   scanServo.attach(SERVO_PIN);
+  // Brief sweep ensures the servo is powered and centered before running modes.
   moveServoAndWait(90); // Center; change if your servo horn is offset
+  moveServoAndWait(60);
+  moveServoAndWait(120);
+  moveServoAndWait(90);
 
   stopMotors();
 }
