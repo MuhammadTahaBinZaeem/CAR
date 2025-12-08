@@ -2,7 +2,7 @@
 // Supports multiple control modes: line following, obstacle avoidance, combo,
 // IR remote driving, Wi‑Fi serial control, and Bluetooth serial control.
 //
-// Hardware mapping:
+// Hardware mapping (matches provided wiring list):
 // L298N: ENA -> D5 (PWM), ENB -> D6 (PWM), IN1->D12, IN2->D11, IN3->D10, IN4->D9
 // Line sensors: left -> D4, right -> D2
 // Ultrasonic (HC-SR04): TRIG -> D8, ECHO -> D7
@@ -44,7 +44,8 @@ enum Mode {
   MODE_BLUETOOTH
 };
 
-Mode currentMode = MODE_LINE;
+// Default to obstacle avoidance so the car starts in the requested behavior.
+Mode currentMode = MODE_OBSTACLE;
 
 // --------------------------- Control constants ---------------------------
 // Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
