@@ -56,7 +56,7 @@ const uint16_t OBSTACLE_THRESHOLD_CM = 15; // Increase if your ultrasonic sensor
 const uint16_t SCAN_DELAY_MS = 200;        // Time for servo to settle when scanning
 
 // --------------------------- IR remote codes ---------------------------
-// Replace these with the codes from your MP3 remote using the IRrecvDump example.
+// Replace with your remote's codes (updated per request).
 const unsigned long IR_CODE_FWD = 0x00FFA25D;      // Replace with your remote's codes
 const unsigned long IR_CODE_BACK = 0x00FF629D;
 const unsigned long IR_CODE_LEFT = 0x00FF22DD;
