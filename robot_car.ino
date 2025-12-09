@@ -126,6 +126,38 @@ bool readRightSensor() {
   return digitalRead(RIGHT_IR_PIN) == LOW;
 }
 
+// Returns true when an edge is detected and a recovery maneuver was executed.
+bool handleCliffProtection() {
+  bool leftMissing = !readLeftSensor();
+  bool rightMissing = !readRightSensor();
+
+  if (!leftMissing && !rightMissing) {
+    return false;
+  }
+
+  stopMotors();
+
+  if (leftMissing && rightMissing) {
+    // Nothing under either sensor: stay stopped to avoid falling.
+    return true;
+  }
+
+  // Back away and turn away from the missing ground.
+  driveBackward(TURN_SPEED);
+  delay(250);
+  stopMotors();
+
+  if (leftMissing) {
+    turnRight(TURN_SPEED);
+  } else {
+    turnLeft(TURN_SPEED);
+  }
+  delay(300);
+  stopMotors();
+
+  return true;
+}
+
 long readDistanceCm() {
   // Trigger the ultrasonic module.
   digitalWrite(TRIG_PIN, LOW);
@@ -175,9 +207,69 @@ void compareDistanceAndTurn() {
   stopMotors();
 }
 
+// Shared obstacle avoidance routine; returns true if an avoidance maneuver ran.
+bool avoidObstacleIfClose() {
+  unsigned long now = millis();
+  if (now - lastDistanceCheck < DISTANCE_CHECK_INTERVAL) {
+    return false;
+  }
+
+  lastDistanceCheck = now;
+  long forwardDistance = readDistanceCm();
+  Serial.print(F("Distance: "));
+  Serial.println(forwardDistance);
+
+  if (forwardDistance <= 0 || forwardDistance > OBSTACLE_THRESHOLD_CM) {
+    return false;
+  }
+
+  // Obstacle detected: pause, back up slightly, and choose the clearest turn.
+  stopMotors();
+  delay(100);
+  driveBackward(TURN_SPEED);
+  delay(250);
+  stopMotors();
+
+  moveServoAndWait(120);
+  long rightDistance = readDistanceCm();
+  moveServoAndWait(60);
+  long leftDistance = readDistanceCm();
+  moveServoAndWait(90);
+
+  bool turnRightNext = rightDistance > leftDistance;
+  long bestDistance = turnRightNext ? rightDistance : leftDistance;
+
+  if (bestDistance <= OBSTACLE_THRESHOLD_CM) {
+    // If both sides are blocked, rotate in place to search for an opening.
+    turnRight(TURN_SPEED);
+    delay(500);
+    stopMotors();
+    return true;
+  }
+
+  if (turnRightNext) {
+    Serial.println(F("Turning right to avoid obstacle"));
+    turnRight(TURN_SPEED);
+  } else {
+    Serial.println(F("Turning left to avoid obstacle"));
+    turnLeft(TURN_SPEED);
+  }
+  delay(400);
+  stopMotors();
+  return true;
+}
+
 // --------------------------- Mode handlers ---------------------------
 // Basic line follower: uses only the two IR reflectance sensors.
 void handleLineFollower() {
+  if (handleCliffProtection()) {
+    return;
+  }
+
+  if (avoidObstacleIfClose()) {
+    return;
+  }
+
   bool leftOnLine = readLeftSensor();
   bool rightOnLine = readRightSensor();
 
@@ -205,62 +297,20 @@ void handleLineFollower() {
 
 // Obstacle avoider: checks distance at a fixed interval and turns away.
 void handleObstacleAvoider() {
-  unsigned long now = millis();
-  if (now - lastDistanceCheck < DISTANCE_CHECK_INTERVAL) {
+  if (handleCliffProtection()) {
     return;
   }
 
-  lastDistanceCheck = now;
-  long forwardDistance = readDistanceCm();
-  Serial.print(F("Distance: "));
-  Serial.println(forwardDistance);
-
-  // Treat zero readings as invalid noise; keep current action until a real value arrives.
-  if (forwardDistance <= 0) {
-    return;
-  }
-
-  if (forwardDistance > OBSTACLE_THRESHOLD_CM) {
+  if (!avoidObstacleIfClose()) {
     driveForward(currentSpeed);
-    return;
   }
-
-  // Obstacle detected: pause, back up slightly, and choose the clearest turn.
-  stopMotors();
-  delay(100);
-  driveBackward(TURN_SPEED);
-  delay(250);
-  stopMotors();
-
-  moveServoAndWait(120);
-  long rightDistance = readDistanceCm();
-  moveServoAndWait(60);
-  long leftDistance = readDistanceCm();
-  moveServoAndWait(90);
-
-  bool turnRightNext = rightDistance > leftDistance;
-  long bestDistance = turnRightNext ? rightDistance : leftDistance;
-
-  if (bestDistance <= OBSTACLE_THRESHOLD_CM) {
-    // If both sides are blocked, rotate in place to search for an opening.
-    turnRight(TURN_SPEED);
-    delay(500);
-    stopMotors();
-    return;
-  }
-
-  if (turnRightNext) {
-    Serial.println(F("Turning right to avoid obstacle"));
-    turnRight(TURN_SPEED);
-  } else {
-    Serial.println(F("Turning left to avoid obstacle"));
-    turnLeft(TURN_SPEED);
-  }
-  delay(400);
-  stopMotors();
 }
 
 void handleComboMode() {
+  if (handleCliffProtection()) {
+    return;
+  }
+
   unsigned long now = millis();
   long distance = -1;
   if (now - lastDistanceCheck >= DISTANCE_CHECK_INTERVAL) {
@@ -278,11 +328,19 @@ void handleComboMode() {
 }
 
 void handleIRDriving() {
-  // Manual driving; nothing happens until an IR command sets motors.
+  if (handleCliffProtection()) {
+    return;
+  }
+
+  avoidObstacleIfClose();
 }
 
 void handleWifiAndBluetooth() {
-  // Commands from Serial set motors directly in loop().
+  if (handleCliffProtection()) {
+    return;
+  }
+
+  avoidObstacleIfClose();
 }
 
 // --------------------------- Command processing ---------------------------
@@ -352,7 +410,11 @@ void processIRRemote() {
     Serial.print(F("IR code: 0x"));
     Serial.println(code, HEX);
 
-    if (code == IR_CODE_FWD) {
+    if (currentMode == MODE_OBSTACLE) {
+      if (code == IR_CODE_STOP) {
+        processMovementCommand('S');
+      }
+    } else if (code == IR_CODE_FWD) {
       processMovementCommand('F');
     } else if (code == IR_CODE_BACK) {
       processMovementCommand('B');
