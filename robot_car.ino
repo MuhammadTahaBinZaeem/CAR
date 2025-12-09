@@ -49,7 +49,7 @@ Mode currentMode = MODE_OBSTACLE;
 
 // --------------------------- Control constants ---------------------------
 // Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
-const uint16_t SERIAL_DEBUG_BAUD = 115200; // Match ESP8266 baud; monitor at this speed
+const uint16_t SERIAL_DEBUG_BAUD = 9600;   // Match your monitor/broker baud
 const uint8_t DEFAULT_SPEED = 180;         // PWM 0-255; raise/lower to match your motors
 const uint8_t TURN_SPEED = 160;            // Slower helps turning accuracy
 const uint16_t OBSTACLE_THRESHOLD_CM = 15; // Increase if your ultrasonic sensor is noisy
@@ -77,6 +77,7 @@ Servo scanServo;
 uint8_t currentSpeed = DEFAULT_SPEED;
 unsigned long lastDistanceCheck = 0;
 const uint16_t DISTANCE_CHECK_INTERVAL = 100; // ms
+bool irStopRequested = false;
 
 // --------------------------- Motor helpers ---------------------------
 void setMotorPins(bool in1, bool in2, bool in3, bool in4) {
@@ -346,6 +347,7 @@ void handleWifiAndBluetooth() {
 // --------------------------- Command processing ---------------------------
 void setMode(Mode newMode) {
   if (currentMode != newMode) {
+    irStopRequested = false;
     currentMode = newMode;
     stopMotors();
     Serial.print(F("Mode changed to: "));
@@ -356,16 +358,24 @@ void setMode(Mode newMode) {
 void processMovementCommand(char cmd) {
   switch (cmd) {
     case 'F':
+      irStopRequested = false;
       driveForward(currentSpeed);
       break;
     case 'B':
+      irStopRequested = false;
       driveBackward(currentSpeed);
       break;
     case 'L':
+      irStopRequested = false;
       turnLeft(TURN_SPEED);
       break;
     case 'R':
+      irStopRequested = false;
       turnRight(TURN_SPEED);
+      break;
+    case 'S':
+      irStopRequested = true;
+      stopMotors();
       break;
     default:
       stopMotors();
@@ -410,19 +420,8 @@ void processIRRemote() {
     Serial.print(F("IR code: 0x"));
     Serial.println(code, HEX);
 
-    if (currentMode == MODE_OBSTACLE) {
-      if (code == IR_CODE_STOP) {
-        processMovementCommand('S');
-      }
-    } else if (code == IR_CODE_FWD) {
-      processMovementCommand('F');
-    } else if (code == IR_CODE_BACK) {
-      processMovementCommand('B');
-    } else if (code == IR_CODE_LEFT) {
-      processMovementCommand('L');
-    } else if (code == IR_CODE_RIGHT) {
-      processMovementCommand('R');
-    } else if (code == IR_CODE_STOP) {
+    // Emergency stop has priority and halts whichever mode is active.
+    if (code == IR_CODE_STOP) {
       processMovementCommand('S');
     } else if (code == IR_CODE_MODE_LINE) {
       processModeCommand('1');
@@ -436,6 +435,14 @@ void processIRRemote() {
       processModeCommand('5');
     } else if (code == IR_CODE_MODE_BT) {
       processModeCommand('6');
+    } else if (code == IR_CODE_FWD) {
+      processMovementCommand('F');
+    } else if (code == IR_CODE_BACK) {
+      processMovementCommand('B');
+    } else if (code == IR_CODE_LEFT) {
+      processMovementCommand('L');
+    } else if (code == IR_CODE_RIGHT) {
+      processMovementCommand('R');
     }
 
     IrReceiver.resume();
@@ -477,6 +484,11 @@ void setup() {
 
 void loop() {
   processIRRemote();
+
+  if (irStopRequested) {
+    stopMotors();
+    return;
+  }
 
   // Process Wi‑Fi and Bluetooth commands (same character set).
   if (currentMode == MODE_WIFI || currentMode == MODE_BLUETOOTH) {
