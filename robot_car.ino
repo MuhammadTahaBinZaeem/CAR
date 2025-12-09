@@ -56,18 +56,18 @@ const uint16_t OBSTACLE_THRESHOLD_CM = 15; // Increase if your ultrasonic sensor
 const uint16_t SCAN_DELAY_MS = 200;        // Time for servo to settle when scanning
 
 // --------------------------- IR remote codes ---------------------------
-// Replace these with the codes from your MP3 remote using the IRrecvDump example.
-const unsigned long IR_CODE_FWD = 0x00FFA25D;      // Replace with your remote's codes
-const unsigned long IR_CODE_BACK = 0x00FF629D;
-const unsigned long IR_CODE_LEFT = 0x00FF22DD;
-const unsigned long IR_CODE_RIGHT = 0x00FFC23D;
-const unsigned long IR_CODE_STOP = 0x00FF02FD;
-const unsigned long IR_CODE_MODE_LINE = 0x00FF30CF;     // Button 1
-const unsigned long IR_CODE_MODE_OBSTACLE = 0x00FF18E7; // Button 2
-const unsigned long IR_CODE_MODE_COMBO = 0x00FF7A85;    // Button 3
-const unsigned long IR_CODE_MODE_IR = 0x00FF10EF;       // Button 4
-const unsigned long IR_CODE_MODE_WIFI = 0x00FF38C7;     // Button 5
-const unsigned long IR_CODE_MODE_BT = 0x00FF5AA5;       // Button 6
+// Replace with your remote's codes (updated per request).
+const unsigned long IR_CODE_FWD = 0xE718FF00;      // Replace with your remote's codes
+const unsigned long IR_CODE_BACK = 0xAD52FF00;
+const unsigned long IR_CODE_LEFT = 0xF708FF00;
+const unsigned long IR_CODE_RIGHT = 0xA55AFF00;
+const unsigned long IR_CODE_STOP = 0xB946FF00;
+const unsigned long IR_CODE_MODE_LINE = 0xF807FF00;     // Button 1
+const unsigned long IR_CODE_MODE_OBSTACLE = 0xEA15FF00; // Button 2
+const unsigned long IR_CODE_MODE_COMBO = 0xE916FF00;    // Button 3
+const unsigned long IR_CODE_MODE_IR = 0xE619FF00;       // Button 4
+const unsigned long IR_CODE_MODE_WIFI = 0xBB44FF00;     // Button 5
+const unsigned long IR_CODE_MODE_BT = 0xBC43FF00;       // Button 6
 
 // --------------------------- Globals ---------------------------
 Servo scanServo;
