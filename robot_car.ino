@@ -267,10 +267,6 @@ void handleLineFollower() {
     return;
   }
 
-  if (avoidObstacleIfClose()) {
-    return;
-  }
-
   bool leftOnLine = readLeftSensor();
   bool rightOnLine = readRightSensor();
 
@@ -332,16 +328,12 @@ void handleIRDriving() {
   if (handleCliffProtection()) {
     return;
   }
-
-  avoidObstacleIfClose();
 }
 
 void handleWifiAndBluetooth() {
   if (handleCliffProtection()) {
     return;
   }
-
-  avoidObstacleIfClose();
 }
 
 // --------------------------- Command processing ---------------------------
