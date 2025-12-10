@@ -69,6 +69,8 @@ const unsigned long IR_CODE_MODE_COMBO = 0xE916FF00;    // Button 3
 const unsigned long IR_CODE_MODE_IR = 0xE619FF00;       // Button 4
 const unsigned long IR_CODE_MODE_WIFI = 0xBB44FF00;     // Button 5
 const unsigned long IR_CODE_MODE_BT = 0xBC43FF00;       // Button 6
+const unsigned long IR_CODE_COMBO_STOP = 0xE31CFF00;    // Dedicated stop while in combo mode
+const unsigned long IR_CODE_COMBO_UTURN = 0xA857FF00;   // Trigger a quick U-turn while in combo mode
 
 // --------------------------- Globals ---------------------------
 Servo scanServo;
@@ -413,6 +415,9 @@ void processIRRemote() {
     // Emergency stop has priority and halts whichever mode is active.
     if (code == IR_CODE_STOP) {
       processMovementCommand('S');
+    } else if (currentMode == MODE_COMBO && code == IR_CODE_COMBO_STOP) {
+      irStopRequested = true;
+      stopMotors();
     } else if (code == IR_CODE_MODE_LINE) {
       processModeCommand('1');
     } else if (code == IR_CODE_MODE_OBSTACLE) {
@@ -433,6 +438,10 @@ void processIRRemote() {
       processMovementCommand('L');
     } else if (code == IR_CODE_RIGHT) {
       processMovementCommand('R');
+    } else if (currentMode == MODE_COMBO && code == IR_CODE_COMBO_UTURN) {
+      irStopRequested = false;
+      performUTurn(MAX_SPEED, 700);
+      driveForward(MAX_SPEED);
     }
 
     IrReceiver.resume();
