@@ -51,6 +51,7 @@ Mode currentMode = MODE_OBSTACLE;
 // Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
 const uint16_t SERIAL_DEBUG_BAUD = 9600;   // Match your monitor/broker baud
 const uint8_t DEFAULT_SPEED = 180;         // PWM 0-255; raise/lower to match your motors
+const uint8_t MAX_SPEED = 255;             // Absolute maximum PWM value for full speed runs
 const uint8_t TURN_SPEED = 160;            // Slower helps turning accuracy
 const uint16_t OBSTACLE_THRESHOLD_CM = 15; // Increase if your ultrasonic sensor is noisy
 const uint16_t SCAN_DELAY_MS = 200;        // Time for servo to settle when scanning
@@ -114,6 +115,13 @@ void turnRight(uint8_t speedValue) {
 
 void stopMotors() {
   setMotorSpeed(0, 0);
+}
+
+// Turn in place to roughly 180 degrees; tune duration to match your chassis.
+void performUTurn(uint8_t turnSpeed, uint16_t durationMs) {
+  turnRight(turnSpeed);
+  delay(durationMs);
+  stopMotors();
 }
 
 // --------------------------- Sensor helpers ---------------------------
@@ -304,24 +312,9 @@ void handleObstacleAvoider() {
 }
 
 void handleComboMode() {
-  if (handleCliffProtection()) {
-    return;
-  }
-
-  unsigned long now = millis();
-  long distance = -1;
-  if (now - lastDistanceCheck >= DISTANCE_CHECK_INTERVAL) {
-    lastDistanceCheck = now;
-    distance = readDistanceCm();
-  }
-
-  if (distance > 0 && distance <= OBSTACLE_THRESHOLD_CM) {
-    stopMotors();
-    compareDistanceAndTurn();
-    return;
-  }
-
-  handleLineFollower();
+  // Combo mode now drives straight at full power without any sensing.
+  currentSpeed = MAX_SPEED;
+  driveForward(MAX_SPEED);
 }
 
 void handleIRDriving() {
@@ -368,6 +361,11 @@ void processMovementCommand(char cmd) {
     case 'S':
       irStopRequested = true;
       stopMotors();
+      break;
+    case 'U':
+      irStopRequested = false;
+      performUTurn(MAX_SPEED, 700);
+      driveForward(MAX_SPEED);
       break;
     default:
       stopMotors();
@@ -430,7 +428,7 @@ void processIRRemote() {
     } else if (code == IR_CODE_FWD) {
       processMovementCommand('F');
     } else if (code == IR_CODE_BACK) {
-      processMovementCommand('B');
+      processMovementCommand('U');
     } else if (code == IR_CODE_LEFT) {
       processMovementCommand('L');
     } else if (code == IR_CODE_RIGHT) {
