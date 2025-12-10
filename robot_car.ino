@@ -426,6 +426,9 @@ void processIRRemote() {
       processModeCommand('3');
     } else if (code == IR_CODE_MODE_IR) {
       processModeCommand('4');
+      // Start rolling immediately when IR driving is selected.
+      irStopRequested = false;
+      driveForward(currentSpeed);
     } else if (code == IR_CODE_MODE_WIFI) {
       processModeCommand('5');
     } else if (code == IR_CODE_MODE_BT) {
