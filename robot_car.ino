@@ -314,9 +314,32 @@ void handleObstacleAvoider() {
 }
 
 void handleComboMode() {
-  // Combo mode now drives straight at full power without any sensing.
+  // Prioritize a fast line-following run at maximum speed.
+  // Per requirement, ignore obstacle and cliff sensors in this mode
+  // to keep the straight-line performance uninterrupted.
   currentSpeed = MAX_SPEED;
-  driveForward(MAX_SPEED);
+
+  bool leftOnLine = readLeftSensor();
+  bool rightOnLine = readRightSensor();
+
+  if (leftOnLine && rightOnLine) {
+    driveForward(MAX_SPEED);
+    return;
+  }
+
+  if (leftOnLine && !rightOnLine) {
+    turnLeft(TURN_SPEED);
+    return;
+  }
+
+  if (!leftOnLine && rightOnLine) {
+    turnRight(TURN_SPEED);
+    return;
+  }
+
+  // When the line is lost, keep rolling forward at a controlled speed
+  // so the sensors can reacquire the path.
+  driveForward(TURN_SPEED);
 }
 
 void handleIRDriving() {
@@ -436,7 +459,7 @@ void processIRRemote() {
     } else if (code == IR_CODE_FWD) {
       processMovementCommand('F');
     } else if (code == IR_CODE_BACK) {
-      processMovementCommand('U');
+      processMovementCommand('B');
     } else if (code == IR_CODE_LEFT) {
       processMovementCommand('L');
     } else if (code == IR_CODE_RIGHT) {
