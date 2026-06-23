@@ -1,86 +1,25 @@
-// Robot car sketch for Arduino UNO WiFi R3 (ATmega328P + ESP8266)
-// Supports multiple control modes: line following, obstacle avoidance, combo,
-// IR remote driving, Wi‑Fi serial control, and Bluetooth serial control.
-//
-// Hardware mapping (matches provided wiring list):
-// L298N: ENA -> D5 (PWM), ENB -> D6 (PWM), IN1->D12, IN2->D11, IN3->D10, IN4->D9
-// Line sensors: left -> D4, right -> D2
-// Ultrasonic (HC-SR04): TRIG -> D8, ECHO -> D7
-// Servo (SG90) for ultrasonic sweep: signal -> D3
-// IR receiver: signal -> D13
-// Bluetooth HC-05 (optional): hardware Serial at 9600 or SoftwareSerial if desired
-// ESP8266 Wi‑Fi: hardware Serial shared at configured baud (e.g., 115200)
+// Minimal robot car sketch: drive straight at max speed and allow a single IR-triggered U-turn.
+// Targets Arduino UNO WiFi R3 (ATmega328P + ESP8266) using an L298N motor driver.
 
-#include <Servo.h>
 #include <IRremote.h>
 
 // --------------------------- Pin definitions ---------------------------
-// Change these to match your motor driver pins if you rewired the L298N.
-const uint8_t ENA_PIN = 5;
-const uint8_t ENB_PIN = 6;
-const uint8_t IN1_PIN = 12;
-const uint8_t IN2_PIN = 11;
-const uint8_t IN3_PIN = 10;
-const uint8_t IN4_PIN = 9;
+const uint8_t ENA_PIN = 5;  // L298N ENA (left motor PWM)
+const uint8_t ENB_PIN = 6;  // L298N ENB (right motor PWM)
+const uint8_t IN1_PIN = 12; // L298N IN1
+const uint8_t IN2_PIN = 11; // L298N IN2
+const uint8_t IN3_PIN = 10; // L298N IN3
+const uint8_t IN4_PIN = 9;  // L298N IN4
 
-// Adjust the digital inputs below if your line sensors are connected elsewhere.
-const uint8_t LEFT_IR_PIN  = 4;
-const uint8_t RIGHT_IR_PIN = 2;
-
-// Ultrasonic trigger/echo pins; update if you use a different pair.
-const uint8_t TRIG_PIN = 8;
-const uint8_t ECHO_PIN = 7;
-const uint8_t SERVO_PIN = 3;
-
-const uint8_t IR_RECEIVER_PIN = 13;
-
-// --------------------------- Mode handling ---------------------------
-enum Mode {
-  MODE_LINE = 0,
-  MODE_OBSTACLE,
-  MODE_COMBO,
-  MODE_IR_REMOTE,
-  MODE_WIFI,
-  MODE_BLUETOOTH
-};
-
-// Default to obstacle avoidance so the car starts in the requested behavior.
-Mode currentMode = MODE_OBSTACLE;
+const uint8_t IR_RECEIVER_PIN = 13; // IR receiver signal pin
 
 // --------------------------- Control constants ---------------------------
-// Tune these to fit your hardware (battery voltage, motor driver, sensor noise).
-const uint16_t SERIAL_DEBUG_BAUD = 9600;   // Match your monitor/broker baud
-const uint8_t DEFAULT_SPEED = 180;         // PWM 0-255; raise/lower to match your motors
-const uint8_t MAX_SPEED = 255;             // Absolute maximum PWM value for full speed runs
-const uint8_t TURN_SPEED = 160;            // Slower helps turning accuracy
-const uint16_t OBSTACLE_THRESHOLD_CM = 15; // Increase if your ultrasonic sensor is noisy
-const uint16_t SCAN_DELAY_MS = 200;        // Time for servo to settle when scanning
+const uint8_t MAX_SPEED = 255;            // Full power for continuous forward drive
+const uint16_t UTURN_DURATION_MS = 700;   // Adjust to match your chassis
+const uint8_t UTURN_SPEED = MAX_SPEED;    // Use full speed for the turn as well
 
-// --------------------------- IR remote codes ---------------------------
-// Replace with your remote's codes (updated per request).
-const unsigned long IR_CODE_FWD = 0xE718FF00;      // Replace with your remote's codes
-const unsigned long IR_CODE_BACK = 0xAD52FF00;
-const unsigned long IR_CODE_LEFT = 0xF708FF00;
-const unsigned long IR_CODE_RIGHT = 0xA55AFF00;
-const unsigned long IR_CODE_STOP = 0xB946FF00;
-const unsigned long IR_CODE_MODE_LINE = 0xF807FF00;     // Button 1
-const unsigned long IR_CODE_MODE_OBSTACLE = 0xEA15FF00; // Button 2
-const unsigned long IR_CODE_MODE_COMBO = 0xE916FF00;    // Button 3
-const unsigned long IR_CODE_MODE_IR = 0xE619FF00;       // Button 4
-const unsigned long IR_CODE_MODE_WIFI = 0xBB44FF00;     // Button 5
-const unsigned long IR_CODE_MODE_BT = 0xBC43FF00;       // Button 6
-const unsigned long IR_CODE_COMBO_STOP = 0xE31CFF00;    // Dedicated stop while in combo mode
-const unsigned long IR_CODE_COMBO_UTURN = 0xA857FF00;   // Trigger a quick U-turn while in combo mode
-
-// --------------------------- Globals ---------------------------
-Servo scanServo;
-// IRremote 4.x uses the singleton IrReceiver instance instead of IRrecv objects.
-// Keeping it global simplifies command processing and avoids compatibility issues.
-
-uint8_t currentSpeed = DEFAULT_SPEED;
-unsigned long lastDistanceCheck = 0;
-const uint16_t DISTANCE_CHECK_INTERVAL = 100; // ms
-bool irStopRequested = false;
+// Use a single IR code to trigger the 180-degree turn. Replace with your remote's code if needed.
+const unsigned long IR_CODE_UTURN = 0xA857FF00; // Existing "U-turn" code from prior setup
 
 // --------------------------- Motor helpers ---------------------------
 void setMotorPins(bool in1, bool in2, bool in3, bool in4) {
@@ -100,16 +39,6 @@ void driveForward(uint8_t speedValue) {
   setMotorSpeed(speedValue, speedValue);
 }
 
-void driveBackward(uint8_t speedValue) {
-  setMotorPins(LOW, HIGH, LOW, HIGH);
-  setMotorSpeed(speedValue, speedValue);
-}
-
-void turnLeft(uint8_t speedValue) {
-  setMotorPins(LOW, HIGH, HIGH, LOW);
-  setMotorSpeed(speedValue, speedValue);
-}
-
 void turnRight(uint8_t speedValue) {
   setMotorPins(HIGH, LOW, LOW, HIGH);
   setMotorSpeed(speedValue, speedValue);
@@ -126,359 +55,10 @@ void performUTurn(uint8_t turnSpeed, uint16_t durationMs) {
   stopMotors();
 }
 
-// --------------------------- Sensor helpers ---------------------------
-bool readLeftSensor() {
-  // Most IR line sensors are active LOW when over a dark line; using INPUT_PULLUP
-  // keeps the reading stable and makes a LOW value the "on line" condition.
-  return digitalRead(LEFT_IR_PIN) == LOW;
-}
-
-bool readRightSensor() {
-  return digitalRead(RIGHT_IR_PIN) == LOW;
-}
-
-// Returns true when an edge is detected and a recovery maneuver was executed.
-bool handleCliffProtection() {
-  bool leftMissing = !readLeftSensor();
-  bool rightMissing = !readRightSensor();
-
-  if (!leftMissing && !rightMissing) {
-    return false;
-  }
-
-  stopMotors();
-
-  if (leftMissing && rightMissing) {
-    // Nothing under either sensor: stay stopped to avoid falling.
-    return true;
-  }
-
-  // Back away and turn away from the missing ground.
-  driveBackward(TURN_SPEED);
-  delay(250);
-  stopMotors();
-
-  if (leftMissing) {
-    turnRight(TURN_SPEED);
-  } else {
-    turnLeft(TURN_SPEED);
-  }
-  delay(300);
-  stopMotors();
-
-  return true;
-}
-
-long readDistanceCm() {
-  // Trigger the ultrasonic module.
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout ~5m
-  long distance = duration / 58; // Convert to cm
-  return distance;
-}
-
-// Rotate servo to given angle with a short pause for settling.
-void moveServoAndWait(int angle) {
-  scanServo.write(angle);
-  delay(SCAN_DELAY_MS);
-}
-
-// Sweep servo to right and left to find free path.
-long scanForObstacle() {
-  moveServoAndWait(120); // Right
-  long rightDistance = readDistanceCm();
-  moveServoAndWait(60);  // Left
-  long leftDistance = readDistanceCm();
-  moveServoAndWait(90);  // Center again
-
-  return leftDistance > rightDistance ? leftDistance : rightDistance;
-}
-
-// Decide turn direction based on measured distances.
-void compareDistanceAndTurn() {
-  moveServoAndWait(120);
-  long rightDistance = readDistanceCm();
-  moveServoAndWait(60);
-  long leftDistance = readDistanceCm();
-  moveServoAndWait(90);
-
-  if (rightDistance > leftDistance) {
-    Serial.println(F("Turning right to avoid obstacle"));
-    turnRight(TURN_SPEED);
-  } else {
-    Serial.println(F("Turning left to avoid obstacle"));
-    turnLeft(TURN_SPEED);
-  }
-  delay(400); // Short turn duration
-  stopMotors();
-}
-
-// Shared obstacle avoidance routine; returns true if an avoidance maneuver ran.
-bool avoidObstacleIfClose() {
-  unsigned long now = millis();
-  if (now - lastDistanceCheck < DISTANCE_CHECK_INTERVAL) {
-    return false;
-  }
-
-  lastDistanceCheck = now;
-  long forwardDistance = readDistanceCm();
-  Serial.print(F("Distance: "));
-  Serial.println(forwardDistance);
-
-  if (forwardDistance <= 0 || forwardDistance > OBSTACLE_THRESHOLD_CM) {
-    return false;
-  }
-
-  // Obstacle detected: pause, back up slightly, and choose the clearest turn.
-  stopMotors();
-  delay(100);
-  driveBackward(TURN_SPEED);
-  delay(250);
-  stopMotors();
-
-  moveServoAndWait(120);
-  long rightDistance = readDistanceCm();
-  moveServoAndWait(60);
-  long leftDistance = readDistanceCm();
-  moveServoAndWait(90);
-
-  bool turnRightNext = rightDistance > leftDistance;
-  long bestDistance = turnRightNext ? rightDistance : leftDistance;
-
-  if (bestDistance <= OBSTACLE_THRESHOLD_CM) {
-    // If both sides are blocked, rotate in place to search for an opening.
-    turnRight(TURN_SPEED);
-    delay(500);
-    stopMotors();
-    return true;
-  }
-
-  if (turnRightNext) {
-    Serial.println(F("Turning right to avoid obstacle"));
-    turnRight(TURN_SPEED);
-  } else {
-    Serial.println(F("Turning left to avoid obstacle"));
-    turnLeft(TURN_SPEED);
-  }
-  delay(400);
-  stopMotors();
-  return true;
-}
-
-// --------------------------- Mode handlers ---------------------------
-// Basic line follower: uses only the two IR reflectance sensors.
-void handleLineFollower() {
-  if (handleCliffProtection()) {
-    return;
-  }
-
-  bool leftOnLine = readLeftSensor();
-  bool rightOnLine = readRightSensor();
-
-  // Both sensors on the line: go straight.
-  if (leftOnLine && rightOnLine) {
-    driveForward(currentSpeed);
-    return;
-  }
-
-  // Only the left sensor sees the line: steer left to recenter.
-  if (leftOnLine && !rightOnLine) {
-    turnLeft(TURN_SPEED);
-    return;
-  }
-
-  // Only the right sensor sees the line: steer right to recenter.
-  if (!leftOnLine && rightOnLine) {
-    turnRight(TURN_SPEED);
-    return;
-  }
-
-  // Nothing detected: move forward slowly to search for the line again.
-  driveForward(TURN_SPEED);
-}
-
-// Obstacle avoider: checks distance at a fixed interval and turns away.
-void handleObstacleAvoider() {
-  if (handleCliffProtection()) {
-    return;
-  }
-
-  if (!avoidObstacleIfClose()) {
-    driveForward(currentSpeed);
-  }
-}
-
-void handleComboMode() {
-  // Prioritize a fast line-following run at maximum speed.
-  // Per requirement, ignore obstacle and cliff sensors in this mode
-  // to keep the straight-line performance uninterrupted.
-  currentSpeed = MAX_SPEED;
-
-  bool leftOnLine = readLeftSensor();
-  bool rightOnLine = readRightSensor();
-
-  if (leftOnLine && rightOnLine) {
-    driveForward(MAX_SPEED);
-    return;
-  }
-
-  if (leftOnLine && !rightOnLine) {
-    turnLeft(TURN_SPEED);
-    return;
-  }
-
-  if (!leftOnLine && rightOnLine) {
-    turnRight(TURN_SPEED);
-    return;
-  }
-
-  // When the line is lost, keep rolling forward at a controlled speed
-  // so the sensors can reacquire the path.
-  driveForward(TURN_SPEED);
-}
-
-void handleIRDriving() {
-  if (handleCliffProtection()) {
-    return;
-  }
-}
-
-void handleWifiAndBluetooth() {
-  if (handleCliffProtection()) {
-    return;
-  }
-}
-
-// --------------------------- Command processing ---------------------------
-void setMode(Mode newMode) {
-  if (currentMode != newMode) {
-    irStopRequested = false;
-    currentMode = newMode;
-    stopMotors();
-    Serial.print(F("Mode changed to: "));
-    Serial.println(currentMode);
-  }
-}
-
-void processMovementCommand(char cmd) {
-  switch (cmd) {
-    case 'F':
-      irStopRequested = false;
-      driveForward(currentSpeed);
-      break;
-    case 'B':
-      irStopRequested = false;
-      driveBackward(currentSpeed);
-      break;
-    case 'L':
-      irStopRequested = false;
-      turnLeft(TURN_SPEED);
-      break;
-    case 'R':
-      irStopRequested = false;
-      turnRight(TURN_SPEED);
-      break;
-    case 'S':
-      irStopRequested = true;
-      stopMotors();
-      break;
-    case 'U':
-      irStopRequested = false;
-      performUTurn(MAX_SPEED, 700);
-      driveForward(MAX_SPEED);
-      break;
-    default:
-      stopMotors();
-      break;
-  }
-}
-
-void processModeCommand(char cmd) {
-  switch (cmd) {
-    case '1': setMode(MODE_LINE); break;
-    case '2': setMode(MODE_OBSTACLE); break;
-    case '3': setMode(MODE_COMBO); break;
-    case '4': setMode(MODE_IR_REMOTE); break;
-    case '5': setMode(MODE_WIFI); break;
-    case '6': setMode(MODE_BLUETOOTH); break;
-    default: break;
-  }
-}
-
-void processSerialCommand(Stream &port) {
-  if (port.available()) {
-    char c = port.read();
-    Serial.print(F("Serial cmd: "));
-    Serial.println(c);
-
-    if (c >= '1' && c <= '6') {
-      processModeCommand(c);
-    } else if (c >= '0' && c <= '9') {
-      // Optional speed value; map 0-9 to PWM range.
-      currentSpeed = map(c - '0', 0, 9, 100, 255);
-      Serial.print(F("Speed set to: "));
-      Serial.println(currentSpeed);
-    } else {
-      processMovementCommand(c);
-    }
-  }
-}
-
-void processIRRemote() {
-  if (IrReceiver.decode()) {
-    unsigned long code = IrReceiver.decodedIRData.decodedRawData;
-    Serial.print(F("IR code: 0x"));
-    Serial.println(code, HEX);
-
-    // Emergency stop has priority and halts whichever mode is active.
-    if (code == IR_CODE_STOP) {
-      processMovementCommand('S');
-    } else if (currentMode == MODE_COMBO && code == IR_CODE_COMBO_STOP) {
-      irStopRequested = true;
-      stopMotors();
-    } else if (code == IR_CODE_MODE_LINE) {
-      processModeCommand('1');
-    } else if (code == IR_CODE_MODE_OBSTACLE) {
-      processModeCommand('2');
-    } else if (code == IR_CODE_MODE_COMBO) {
-      processModeCommand('3');
-    } else if (code == IR_CODE_MODE_IR) {
-      processModeCommand('4');
-      // Start rolling immediately when IR driving is selected.
-      irStopRequested = false;
-      driveForward(currentSpeed);
-    } else if (code == IR_CODE_MODE_WIFI) {
-      processModeCommand('5');
-    } else if (code == IR_CODE_MODE_BT) {
-      processModeCommand('6');
-    } else if (code == IR_CODE_FWD) {
-      processMovementCommand('F');
-    } else if (code == IR_CODE_BACK) {
-      processMovementCommand('B');
-    } else if (code == IR_CODE_LEFT) {
-      processMovementCommand('L');
-    } else if (code == IR_CODE_RIGHT) {
-      processMovementCommand('R');
-    } else if (currentMode == MODE_COMBO && code == IR_CODE_COMBO_UTURN) {
-      irStopRequested = false;
-      performUTurn(MAX_SPEED, 700);
-      driveForward(MAX_SPEED);
-    }
-
-    IrReceiver.resume();
-  }
-}
-
 // --------------------------- Setup and loop ---------------------------
-// Initialize peripherals; adjust baud and servo center angle for your build.
 void setup() {
-  Serial.begin(SERIAL_DEBUG_BAUD);
-  Serial.println(F("Robot car starting"));
+  Serial.begin(9600);
+  Serial.println(F("Straight-line mode with IR U-turn"));
 
   pinMode(ENA_PIN, OUTPUT);
   pinMode(ENB_PIN, OUTPUT);
@@ -487,55 +67,20 @@ void setup() {
   pinMode(IN3_PIN, OUTPUT);
   pinMode(IN4_PIN, OUTPUT);
 
-  pinMode(LEFT_IR_PIN, INPUT_PULLUP);
-  pinMode(RIGHT_IR_PIN, INPUT_PULLUP);
-
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-
   IrReceiver.begin(IR_RECEIVER_PIN, ENABLE_LED_FEEDBACK);
-
-  digitalWrite(TRIG_PIN, LOW);
-
-  scanServo.attach(SERVO_PIN);
-  // Brief sweep ensures the servo is powered and centered before running modes.
-  moveServoAndWait(90); // Center; change if your servo horn is offset
-  moveServoAndWait(60);
-  moveServoAndWait(120);
-  moveServoAndWait(90);
 
   stopMotors();
 }
 
 void loop() {
-  processIRRemote();
-
-  if (irStopRequested) {
-    stopMotors();
-    return;
+  if (IrReceiver.decode()) {
+    unsigned long code = IrReceiver.decodedIRData.decodedRawData;
+    if (code == IR_CODE_UTURN) {
+      performUTurn(UTURN_SPEED, UTURN_DURATION_MS);
+    }
+    IrReceiver.resume();
   }
 
-  // Process Wi‑Fi and Bluetooth commands (same character set).
-  if (currentMode == MODE_WIFI || currentMode == MODE_BLUETOOTH) {
-    processSerialCommand(Serial);
-  }
-
-  switch (currentMode) {
-    case MODE_LINE:
-      handleLineFollower();
-      break;
-    case MODE_OBSTACLE:
-      handleObstacleAvoider();
-      break;
-    case MODE_COMBO:
-      handleComboMode();
-      break;
-    case MODE_IR_REMOTE:
-      handleIRDriving();
-      break;
-    case MODE_WIFI:
-    case MODE_BLUETOOTH:
-      handleWifiAndBluetooth();
-      break;
-  }
+  // Always drive forward at maximum speed.
+  driveForward(MAX_SPEED);
 }
